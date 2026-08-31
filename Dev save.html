@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Swarm Queen</title>
+  <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000;
+    }
+    #flash-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    ruffle-player {
+      width: 100%;
+      height: 100%;
+      display: block;
+      transform: scale(1.71);
+      transform-origin: top left;
+      transition: transform 0.15s ease;
+    }
+    ruffle-player.zoom-off {
+      transform: scale(1);
+    }
+    #zoom-toggle {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      z-index: 9999;
+      padding: 6px 10px;
+      font-size: 12px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0.6;
+    }
+    #zoom-toggle:hover {
+      opacity: 1;
+    }
+    #show-save-btn {
+      position: fixed;
+      top: 44px;
+      right: 8px;
+      z-index: 9999;
+      padding: 6px 10px;
+      font-size: 12px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0.6;
+    }
+    #show-save-btn:hover {
+      opacity: 1;
+    }
+    #save-data-output {
+      display: none;
+      position: fixed;
+      top: 80px;
+      right: 8px;
+      width: min(90vw, 500px);
+      height: 200px;
+      z-index: 9999;
+      font-size: 11px;
+      font-family: monospace;
+      background: #fff;
+      color: #000;
+    }
+
+    /* Force the player (and its internal canvas) to fill the screen
+       when fullscreen is triggered via Ruffle's own context menu */
+    ruffle-player:fullscreen,
+    ruffle-player:-webkit-full-screen,
+    ruffle-player:-moz-full-screen {
+      width: 100vw !important;
+      height: 100vh !important;
+    }
+
+    ruffle-player:fullscreen canvas,
+    ruffle-player:-webkit-full-screen canvas,
+    ruffle-player:-moz-full-screen canvas {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <div id="flash-container"></div>
+  <button id="zoom-toggle">Zoom: ON</button>
+  <button id="show-save-btn">Show Save Data</button>
+  <textarea id="save-data-output" readonly></textarea>
+  <script>
+    // Real save data exported from a device that had beaten level 1.
+    // To update the baseline later: click "Show Save Data" after reaching
+    // the new state you want, and swap the values below.
+    const DEFAULT_SAVE_DATA = {
+      "blue-ai-code.github.io/SwarmQueen.swf/cookieSave1":
+        "AL8AAACSVENTTwAEAAAAAAALY29va2llU2F2ZTEAAAADF3RoZVNhdmVEYXRhBoFPMywzLDIsMywzLDMsMywzLDIsMiwzLDIsMywyLDIsMywyLDAsMCwwLDBfMCwwLDAsMCwwLDAsMCwwLDAsMCwwXzEsMCwwLDEsMCwwLDEsMSwwLDAsMCwwLDAsMCwwLDAsMCwwLDAsMAA=",
+      "blue-ai-code.github.io/SwarmQueen.swf/cookieSettings":
+        "AL8AAALkVENTTwAEAAAAAAAOY29va2llU2V0dGluZ3MAAAADH2RvdWJsZUNsaWNrVGltZQU/2ZmZmZmZmgATdm9sdW1lU0ZYBAEAHXNjcmVlblNoYWtlTW9kBAEAF3ZvbHVtZU11c2ljBAEAE2tleUJ1aWxkMAQwACdoZWFsdGhiYXJDb2xvckVuZW15BIPYgAAAGWRlY2Fsc19ibG9vZAMAE2tleUJ1aWxkNAQ0ABNrZXlCdWlsZDEEMQATa2V5U3BlbGwxBFEAD2tleUxlZnQEQQAJb25CRwMACW9uRkcDABNrZXlCdWlsZDUENQAZaG9sZFRvTXV0YXRlBT/XrhR64UeuABlmdWxsU2NyZWVuT24CABdwcm9qU2hhZG93cwMAEWdhbWVab29tAwAjcGFydGljbGVTb2Z0TGltaXQEhTwAKWNhcmRNb3VzZU92ZXJUcmlnZ2VyBT/hmZmZmZmaAAtvblNreQMAIW5vcm1hbFNwZWVkTXVsdGkEAAAZYW50aUFsaWFzaW5nBAAALWhlYWx0aGJhckNvbG9yRnJpZW5kbHkEg7oAABFvbkNsb3VkcwMAE3RhcmdldEZQUwQ8ACN2b2x1bWVBdWRpb19NVVRFRAIAF3ZvbHVtZVF1ZWVuBT/czMzMzMzNABNrZXlCdWlsZDIEMgAVa2V5VXBncmFkZQRTABNrZXlDYW5jZWwEEQAZa2V5a2V5U3BlbGwyBEUADXN0ZXJlbwMAFWhlYWx0aFNob3cDACNhdXRvQ2FtZXJhVHJpZ2dlcgQeACVkYW1hZ2VOdW1iZXJzU2NhbGUFP+o9cKPXCj0AFWFpclNoYWRvd3MDABFzcGVlZE1heAQEABNrZXlCdWlsZDMEMwARa2V5UmlnaHQERAAjdm9sdW1lTXVzaWNfTVVURUQCAB9kYW1hZ2VOdW1iZXJzT24DABdtYXhIVURzY2FsZQU/+AAAAAAAAAAZZnVsbHNjcmVlbk9uAgA="
+    };
+
+    function seedSaveDataIfMissing() {
+      Object.keys(DEFAULT_SAVE_DATA).forEach((key) => {
+        if (localStorage.getItem(key) === null) {
+          localStorage.setItem(key, DEFAULT_SAVE_DATA[key]);
+        }
+      });
+    }
+
+    window.RufflePlayer = window.RufflePlayer || {};
+    window.addEventListener("load", () => {
+      seedSaveDataIfMissing();
+
+      const ruffle = window.RufflePlayer.newest();
+      const player = ruffle.createPlayer();
+      document.getElementById("flash-container").appendChild(player);
+
+      player.config = {
+        letterbox: "on",
+        autoplay: true
+      };
+
+      player.load("SwarmQueen.swf");
+
+      const toggleBtn = document.getElementById("zoom-toggle");
+      toggleBtn.addEventListener("click", () => {
+        const isOff = player.classList.toggle("zoom-off");
+        toggleBtn.textContent = isOff ? "Zoom: OFF" : "Zoom: ON";
+      });
+
+      const showSaveBtn = document.getElementById("show-save-btn");
+      const saveOutput = document.getElementById("save-data-output");
+      showSaveBtn.addEventListener("click", () => {
+        if (saveOutput.style.display === "block") {
+          saveOutput.style.display = "none";
+          return;
+        }
+        let text = "";
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          const value = localStorage.getItem(key);
+          text += "KEY: " + key + "\nVALUE: " + value + "\n\n---\n\n";
+        }
+        saveOutput.value = text || "(localStorage is empty — no save data found yet)";
+        saveOutput.style.display = "block";
+        saveOutput.focus();
+        saveOutput.select();
+      });
+    });
+  </script>
+</body>
+</html>
